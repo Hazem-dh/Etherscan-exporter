@@ -213,7 +213,8 @@ class DateTimePicker(ctk.CTkFrame):
             command=self._open_cal,
         )
         self._date_btn.pack(side="left")
-
+        ctk.CTkLabel(row, text="[cal]", font=ctk.CTkFont(size=FONT_SM),
+                     text_color=ETH_MUTED, width=34).pack(side="left", padx=(2, 10))
 
         # Three time fields, auto-advance H -> M -> S
         self._s_field = _TimeField(row, max_val=59)

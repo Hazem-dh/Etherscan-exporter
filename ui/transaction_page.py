@@ -1,6 +1,7 @@
 """
 ui/transaction_page.py
-Page 1 — Extract transactions and export to CSV.
+Page — Extract normal or internal transactions and export to CSV.
+Instantiated twice (once per type) by app.py.
 """
 
 import threading
@@ -15,7 +16,7 @@ from constants import (
     ETH_BLUE, ETH_MUTED, ETH_TEXT, ETH_SUCCESS, ETH_ERROR, ETH_WARN,
     FONT_BASE, FONT_SM, FONT_XL,
 )
-from core.api import get_block_number, fetch_all_transactions
+from core.api import get_block_number, fetch_all_transactions, fetch_all_internal_transactions
 from core.state import AppState
 from core.validators import (
     ValidationError, validate_wallet_address,
@@ -26,14 +27,17 @@ from ui.widgets import PageHeader, LabelledEntry, DateTimePicker
 
 class TransactionPage(ctk.CTkFrame):
 
-    def __init__(self, master, **kw):
+    def __init__(self, master, preset_type: str = "normal", **kw):
         super().__init__(master, fg_color=ETH_DARK, **kw)
         self._out_folder = ""
+        self._tx_type    = preset_type          # "normal" | "internal"
         self._build()
 
     def _build(self):
-        PageHeader(self, "Transaction Extractor",
-                   "Export wallet transactions to CSV").pack(
+        subtitle = ("Export internal transactions to CSV"
+                    if self._tx_type == "internal"
+                    else "Export normal transactions to CSV")
+        PageHeader(self, "Transaction Extractor", subtitle).pack(
             fill="x", padx=20, pady=(20, 10))
 
         form = ctk.CTkFrame(self, fg_color=ETH_CARD, corner_radius=12)
@@ -41,22 +45,20 @@ class TransactionPage(ctk.CTkFrame):
         inner = ctk.CTkFrame(form, fg_color="transparent")
         inner.pack(fill="x", padx=16, pady=12)
 
-        self._addr = LabelledEntry(inner, "Wallet Address", placeholder="0x…")
+        self._addr = LabelledEntry(inner, "Wallet Address", placeholder="0x...")
         self._addr.pack(fill="x")
 
-        # ── Date/time pickers ─────────────────────────────────────────────
+        # Date/time pickers
         dt_row = ctk.CTkFrame(inner, fg_color="transparent")
         dt_row.pack(fill="x", pady=(12, 0))
-
         self._start_dt = DateTimePicker(dt_row, "Start Date & Time",
-                                        initial=datetime(2023, 1, 1, 0, 0, 0))
+                                        initial=datetime(datetime.now().year, 1, 1, 0, 0, 0))
         self._start_dt.pack(side="left", padx=(0, 24))
-
         self._end_dt = DateTimePicker(dt_row, "End Date & Time",
-                                      initial=datetime(2023, 12, 31, 23, 59, 59))
+                                      initial=datetime.now())
         self._end_dt.pack(side="left")
 
-        # ── Output ────────────────────────────────────────────────────────
+        # Output
         out_sec = ctk.CTkFrame(inner, fg_color="transparent")
         out_sec.pack(fill="x", pady=(12, 0))
         ctk.CTkLabel(out_sec, text="Output File Name",
@@ -68,7 +70,7 @@ class TransactionPage(ctk.CTkFrame):
                                    height=36, corner_radius=8,
                                    border_color=ETH_BORDER, fg_color=ETH_DARKER)
         self._fname.pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(out_row, text="📁 Choose Folder", width=130, height=36,
+        ctk.CTkButton(out_row, text="Choose Folder", width=130, height=36,
                       fg_color=ETH_BORDER, hover_color="#3A4560", corner_radius=8,
                       font=ctk.CTkFont(size=FONT_BASE),
                       command=self._pick_folder).pack(side="left", padx=(8, 0))
@@ -77,7 +79,7 @@ class TransactionPage(ctk.CTkFrame):
                                         text_color=ETH_MUTED)
         self._folder_lbl.pack(side="left", padx=(10, 0))
 
-        # ── Action bar ────────────────────────────────────────────────────
+        # Action bar
         action = ctk.CTkFrame(self, fg_color=ETH_CARD, corner_radius=12)
         action.pack(fill="x", padx=20, pady=6)
         self._run_btn = ctk.CTkButton(
@@ -97,7 +99,7 @@ class TransactionPage(ctk.CTkFrame):
                                     text_color=ETH_MUTED)
         self._status.pack(side="left")
 
-        # ── Log ───────────────────────────────────────────────────────────
+        # Log
         log_card = ctk.CTkFrame(self, fg_color=ETH_CARD, corner_radius=12)
         log_card.pack(fill="both", expand=True, padx=20, pady=(6, 20))
         ctk.CTkLabel(log_card, text="Activity Log",
@@ -114,7 +116,7 @@ class TransactionPage(ctk.CTkFrame):
         folder = filedialog.askdirectory(title="Choose output folder")
         if folder:
             self._out_folder = folder
-            short = folder if len(folder) < 42 else "…" + folder[-39:]
+            short = folder if len(folder) < 42 else "..." + folder[-39:]
             self._folder_lbl.configure(text=short)
 
     def _log(self, msg: str):
@@ -155,41 +157,47 @@ class TransactionPage(ctk.CTkFrame):
         threading.Thread(target=self._worker, args=(p,), daemon=True).start()
 
     def _worker(self, p):
+        label    = "internal" if self._tx_type == "internal" else "normal"
+        fetch_fn = (fetch_all_internal_transactions
+                    if self._tx_type == "internal"
+                    else fetch_all_transactions)
         try:
-            self._set_status("Resolving start block…")
-            self._log("Resolving start block…")
+            self._set_status("Resolving start block...")
+            self._log("Resolving start block...")
             sb = get_block_number(p["sdate"], p["stime"], "after",  p["api_key"])
             self._log(f"Start block: {sb:,}")
 
-            self._set_status("Resolving end block…")
-            self._log("Resolving end block…")
+            self._set_status("Resolving end block...")
+            self._log("Resolving end block...")
             eb = get_block_number(p["edate"], p["etime"], "before", p["api_key"])
             self._log(f"End block:   {eb:,}")
 
             self._progress.set(0.15)
-            self._set_status("Downloading…", ETH_BLUE)
-            self._log("Fetching transactions…")
-            txs = fetch_all_transactions(
+            self._set_status(f"Downloading {label} transactions...", ETH_BLUE)
+            self._log(f"Fetching {label} transactions...")
+
+            txs = fetch_fn(
                 p["addr"], sb, eb, p["api_key"],
-                progress_cb=lambda n, pg: self._log(f"  Page {pg+1}: {n:,} txs"))
+                progress_cb=lambda n, pg: self._log(f"  Page {pg+1}: {n:,} txs so far"))
             self._progress.set(0.85)
 
             if not txs:
-                self._log("⚠ No transactions found.")
+                self._log(f"No {label} transactions found in this range.")
                 self._set_status("No transactions found", ETH_WARN)
                 return
 
-            self._log(f"Total: {len(txs):,} — writing CSV…")
+            self._log(f"Total: {len(txs):,} — writing CSV...")
             df = pd.DataFrame(txs)
             if "value" in df.columns:
                 df["value_eth"] = df["value"].astype(float) / 1e18
             df.to_csv(p["out_path"], index=False)
             self._progress.set(1.0)
-            self._log(f"✓ Saved → {p['out_path']}")
-            self._set_status(f"✓ {len(txs):,} transactions exported", ETH_SUCCESS)
-            messagebox.showinfo("Done", f"Exported {len(txs):,} transactions to:\n{p['out_path']}")
+            self._log(f"Saved -> {p['out_path']}")
+            self._set_status(f"{len(txs):,} transactions exported", ETH_SUCCESS)
+            messagebox.showinfo("Done",
+                f"Exported {len(txs):,} {label} transactions to:\n{p['out_path']}")
         except Exception as exc:
-            self._log(f"✗ {exc}")
+            self._log(f"Error: {exc}")
             self._set_status("Error — see log", ETH_ERROR)
             messagebox.showerror("Error", str(exc))
         finally:
