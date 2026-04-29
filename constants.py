@@ -3,7 +3,7 @@ constants.py
 All application-wide constants: colors, font sizes, window geometry.
 """
 
-APP_TITLE  = "Ethereum Wallet Explorer"
+APP_TITLE  = "Ethereum Wallet Exporter"
 APP_WIDTH  = 1200
 APP_HEIGHT = 700
 APP_MIN_W  = 820

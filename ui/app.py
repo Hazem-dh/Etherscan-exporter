@@ -70,7 +70,7 @@ class App(ctk.CTk):
         lc = tk.Canvas(logo_row, width=32, height=32, bg=ETH_CARD, highlightthickness=0)
         lc.pack(side="left", padx=(18, 6))
         draw_eth_logo(lc, 16, 16, size=28)
-        ctk.CTkLabel(logo_row, text="ETH Explorer",
+        ctk.CTkLabel(logo_row, text="ETH Exporter",
                      font=ctk.CTkFont(size=FONT_2XL, weight="bold"),
                      text_color=ETH_TEXT).pack(side="left")
 
